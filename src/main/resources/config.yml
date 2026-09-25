@@ -1,0 +1,361 @@
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║ BLACKBOX · TELEMETRY, ANALYSIS AND DIAGNOSTICS FOR PAPER                ║
+# ║ Compatible con Paper 1.21.4–26.3                                         ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+#
+# This configuration is organized by goal:
+#   1) sampling       → how often the server is observed;
+#   2) monitoring     → which events and cycles are retained;
+#   3) inventory      → what is inspected on disk and in plugins;
+#   4) storage        → how much is retained and how the server is protected;
+#   5) privacy        → which player and entity data is stored;
+#   6) diagnostics    → when a signal becomes a finding;
+#   7) reports        → how much detail enters PDF/Markdown;
+#   8) profiling      → when a JFR profile is captured.
+#
+# Key names are part of the configuration API: do not change them.
+# BlackBox validates types and ranges at startup and records the problematic line.
+# Increasing frequency, detail or retention increases CPU, RAM and disk usage.
+
+# User-facing language for commands, logs and generated reports. Supported locales: en_US, es_ES.
+language: en_US
+
+
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ 01 · MUESTREO                                                            │
+# └──────────────────────────────────────────────────────────────────────────┘
+sampling:
+  # Estado global del servidor: TPS, MSPT, percentiles de tick, CPU, memoria,
+  # GC, hilos, disco, jugadores, chunks y contadores de telemetría.
+  # Rango seguro: 1–300 s. Menor valor = más resolución y más filas.
+  server-seconds: 5
+
+  # Ciclo completo de censo de chunks cargados. El trabajo se reparte entre
+  # ticks para no bloquear el hilo principal.
+  # Rango seguro: 10–3600 s.
+  chunk-scan-seconds: 60
+
+  # Chunks examinados en cada tick del escáner. Es el principal control del
+  # coste instantáneo del escaneo.
+  # Rango seguro: 1–128 chunks/tick.
+  chunks-per-tick: 8
+
+  # Muestreo individual de jugadores: ping, protocolo, cliente, locale,
+  # distancias, chunks enviados y posición (si la privacidad lo permite).
+  # Rango seguro: 1–600 s.
+  player-seconds: 15
+
+
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ 02 · MONITORIZACIÓN                                                      │
+# └──────────────────────────────────────────────────────────────────────────┘
+monitoring:
+  # Muestras periódicas de jugadores.
+  player-samples: true
+
+  # Entradas/salidas, expulsiones, kicks y estados del resource pack.
+  player-connections: true
+
+  # Spawn y retirada de entidades: UUID, tipo, causa, origen, ubicación,
+  # vida observada, ticking, persistencia, pasajeros y jugadores rastreados.
+  entity-lifecycle: true
+
+  # Carga/descarga de chunks, generación, guardado, duración y tickets.
+  chunk-lifecycle: true
+
+  # Acumuladores por evento y por mundo:chunk. Alimentan hotspots e informes.
+  event-hotspots: true
+
+  # Warnings, errores y stacks del logging de Java.
+  server-warnings: true
+
+  # Protección frente a mensajes gigantes de plugins o del servidor.
+  # Rango seguro: 256–100000 caracteres.
+  warning-message-max-chars: 4000
+
+  # Límite de cada stack trace persistido.
+  # Rango seguro: 1024–1000000 caracteres.
+  warning-stack-max-chars: 16000
+
+  # Guarda posición, mundo, nombre, estado y comando completo de command blocks.
+  command-block-details: true
+
+  # Lee archivos Anvil (.mca) sin cargar chunks en Paper. Incluye terreno,
+  # entidades y, opcionalmente, puntos de interés.
+  offline-region-census: true
+
+  # Intervalo del censo offline. No afecta al muestreo en vivo.
+  # Rango seguro: 10–10080 minutos.
+  region-census-minutes: 360
+
+  # Descomprime y valida NBT de los chunks encontrados en disco para contar
+  # entidades, block entities, ticks de bloque y ticks de fluidos.
+  region-parse-nbt: true
+
+  # Incluye la carpeta poi/ en el censo Anvil.
+  region-include-poi: true
+
+  # Añade tipos detallados de entidades/block entities, hoppers, spawners,
+  # command blocks, carga forzada y tickets de plugins.
+  detailed-entities: true
+
+  # Eventos concretos que se cuentan y se localizan por chunk.
+  events:
+    chunk-loads: true       # cargas y descargas de chunks
+    entity-spawns: true     # spawns y muertes/retiradas observables
+    redstone: true          # cambios de redstone
+    inventory-moves: true   # transferencias de inventario/hoppers
+    pistons: true           # extensiones y retracciones
+    explosions: true        # explosiones de entidades y bloques
+    block-changes: true     # bloques rotos y colocados
+
+
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ 03 · INVENTARIO DE ARCHIVOS, PLUGINS Y PACKS                             │
+# └──────────────────────────────────────────────────────────────────────────┘
+inventory:
+  # Lee claves/valores de configuraciones. Credenciales, tokens, contraseñas,
+  # direcciones y claves privadas reconocibles se sustituyen por <redacted>.
+  scan-config-values: true
+
+  # Inspecciona ZIP/JAR de datapacks y resource packs: modelos, texturas,
+  # blockstates, tags, recetas, loot tables y funciones.
+  analyze-pack-archives: true
+
+  # Revisa funciones de datapack: comandos, execute, @e amplio, schedules,
+  # summons, partículas y mutaciones masivas.
+  analyze-functions: true
+
+  # Máximo de archivos inventariados por pasada.
+  # Rango seguro: 100–1000000.
+  max-files: 20000
+
+  # Configuraciones mayores se inventarían, pero no se leen completas.
+  # Rango seguro: 0–64 MiB.
+  max-config-file-mib: 1
+
+  # Máximo de claves de configuración conservadas por archivo.
+  # Rango seguro: 1–10000.
+  max-config-entries: 200
+
+  # Límite anti-bomba para entradas de ZIP.
+  # Rango seguro: 100–2000000.
+  max-zip-entries: 200000
+
+  # Máximo de comandos leídos por función de datapack.
+  # Rango seguro: 100–1000000.
+  max-function-commands: 100000
+
+  # Funciones mayores se inventarían, pero no se analizan por completo.
+  # Rango seguro: 1–64 MiB.
+  max-function-file-mib: 2
+
+
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ 04 · ALMACENAMIENTO, CUOTAS Y RETENCIÓN                                  │
+# └──────────────────────────────────────────────────────────────────────────┘
+storage:
+  # Días de telemetría que pueden consultarse desde /blackbox report.
+  # Rango seguro: 1–3650 días.
+  retention-days: 14
+
+  # Cuota dura de telemetry/. Al alcanzarla se purgan primero segmentos viejos.
+  # Rango seguro: 64–10240 MiB.
+  max-telemetry-mib: 256
+
+  # Cuota independiente de capturas JFR.
+  # Rango seguro: 64–10240 MiB.
+  max-profiles-mib: 256
+
+  # Cuota independiente de informes históricos.
+  # Rango seguro: 64–10240 MiB.
+  max-reports-mib: 256
+
+  # Segmentos CSV antes de comprimirlos con GZIP.
+  # Rango seguro: 1–60 minutos.
+  segment-minutes: 5
+
+  # Límite de filas por stream y minuto. Las filas excedentes se contabilizan
+  # como descartadas para que una granja o plugin no llene el disco.
+  # Rango seguro: 100–1000000 filas/minuto.
+  max-rows-per-stream-minute: 1000
+
+  # Descarta filas anómalamente largas antes de encolarlas.
+  # Rango seguro: 1024–1000000 caracteres.
+  max-row-chars: 16384
+
+  # Cola asíncrona entre el hilo de Paper y la escritura. Si se llena, BlackBox
+  # no bloquea el servidor: registra el número de filas descartadas.
+  # Rango seguro: 1000–1000000 filas.
+  queue-capacity: 25000
+
+  # Tiempo máximo para vaciar la cola durante el apagado.
+  # Rango seguro: 5–300 s.
+  shutdown-flush-seconds: 30
+
+  # Archivos mayores se inventarían, pero no se calcula su SHA-256.
+  # Rango seguro: 0–1024 MiB.
+  max-hash-file-mib: 25
+
+
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ 05 · PRIVACIDAD                                                          │
+# └──────────────────────────────────────────────────────────────────────────┘
+privacy:
+  # hash = correlaciona sesiones sin guardar IP legible;
+  # plain = guarda IP sin transformar;
+  # off = no guarda dirección.
+  player-addresses: hash
+
+  # Nombre visible del jugador en muestras y conexiones.
+  store-player-names: true
+
+  # UUID del jugador para correlacionar entradas entre sesiones.
+  store-player-uuids: true
+
+  # Mundo y coordenadas del jugador en las muestras periódicas.
+  store-player-locations: true
+
+  # UUID de entidades en el ciclo de vida de entidades.
+  store-entity-uuids: true
+
+
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ 06 · UMBRALES Y DIAGNÓSTICO                                              │
+# └──────────────────────────────────────────────────────────────────────────┘
+diagnostics:
+  # TPS por debajo del cual se crea una advertencia de rendimiento.
+  low-tps: 18.5
+
+  # TPS por debajo del cual el hallazgo pasa a CRITICAL.
+  critical-tps: 15.0
+
+  # p95 de tick que indica ticks lentos.
+  high-mspt: 50.0
+
+  # Uso de heap que sugiere presión de memoria/GC.
+  heap-percent: 90.0
+
+  # CPU del proceso Java que sugiere saturación.
+  process-cpu-percent: 90.0
+
+  # Ping individual que se muestra como latencia alta.
+  high-ping-ms: 200
+
+  # Densidad máxima esperada de entidades por chunk antes de crear hallazgo.
+  entities-per-chunk: 100
+
+  # Densidad máxima esperada de block entities por chunk.
+  block-entities-per-chunk: 80
+
+  # Hoppers por chunk antes de marcar una concentración técnica.
+  hoppers-per-chunk: 32
+
+  # Command blocks por chunk antes de marcar una concentración técnica.
+  command-blocks-per-chunk: 16
+
+  # Eventos de redstone acumulados durante la ventana.
+  high-redstone-events: 100000
+
+  # Movimientos de hopper acumulados durante la ventana.
+  high-hopper-events: 50000
+
+  # Spawns acumulados antes de investigar churn de entidades.
+  entity-churn-events: 10000
+
+  # Vida inferior a este número de ticks se considera entidad de vida corta.
+  short-entity-life-ticks: 1200
+
+  # Actividad por hotspot que merece aparecer como incidente.
+  hotspot-events: 50000
+
+  # Puntuación mínima de riesgo estático de una función de datapack.
+  function-risk-score: 1
+
+  # Muestras mínimas para interpretar una correlación con MSPT.
+  correlation-min-samples: 12
+
+  # Correlación de Pearson desde la que se crea una pista de advertencia.
+  correlation-warning: 0.70
+
+  # Por debajo de este valor la relación se describe como débil.
+  correlation-weak: 0.30
+
+  # Máximo de hallazgos similares por categoría en el PDF.
+  max-findings-per-category: 5
+
+
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ 07 · INFORMES                                                            │
+# └──────────────────────────────────────────────────────────────────────────┘
+reports:
+  # Genera automáticamente BlackBox-session-report.pdf al apagar/reiniciar.
+  automatic-session-on-shutdown: true
+
+  # Límite del informe final para no bloquear el apagado de Paper.
+  # Rango seguro: 1–60 s.
+  shutdown-timeout-seconds: 10
+
+  # Máximo leído de logs/latest.log, comenzando por el final.
+  # Rango seguro: 0–2048 MiB.
+  latest-log-read-mib: 50
+
+  # Número máximo de hallazgos recuperados del log.
+  # Rango seguro: 0–1000000.
+  latest-log-findings: 20000
+
+  # Máximo de caracteres de una línea de log importada.
+  # Rango seguro: 256–100000.
+  latest-log-line-max-chars: 4000
+
+  # Límites de agregación para CSV/PDF. Los anexos de detalle conservan más
+  # información cuando el formato lo permite.
+  aggregate-hotspots: 500
+  aggregate-warnings: 200
+  markdown-chunks: 50
+  markdown-command-blocks: 100
+
+  # Filas visibles en cada tabla del PDF; los CSV anexos conservan el detalle.
+  pdf-correlations: 20
+  pdf-chunks: 40
+  pdf-players: 50
+  pdf-command-blocks: 60
+  pdf-functions: 50
+  pdf-hotspots: 50
+  pdf-chunk-lifecycle: 40
+  pdf-entity-types: 60
+  pdf-warnings: 40
+  pdf-incidents: 80
+  pdf-plugins: 100
+
+
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │ 08 · PERFILADO JFR                                                       │
+# └──────────────────────────────────────────────────────────────────────────┘
+profiling:
+  # Límite para /blackbox profile <segundos>.
+  # Rango seguro: 10–3600 s.
+  max-seconds: 300
+
+  # Métodos principales incluidos en el análisis Markdown del JFR.
+  # Rango seguro: 10–10000.
+  top-methods: 100
+
+  # Perfil automático cuando el lag persiste varias muestras.
+  automatic:
+    enabled: true
+
+    # TPS 1 min que cuenta como muestra mala para iniciar JFR automático.
+    tps-threshold: 16.0
+
+    # p95 de tick que cuenta como muestra mala para iniciar JFR automático.
+    tick-p95-ms: 75.0
+
+    # Muestras malas consecutivas necesarias.
+    consecutive-samples: 3
+
+    # Duración del JFR automático.
+    seconds: 45
+
+    # Tiempo sin iniciar otro perfil automático después de uno anterior.
+    cooldown-minutes: 30

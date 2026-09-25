@@ -1,0 +1,17 @@
+name: BlackBox
+version: '${version}'
+main: es.mrdino.blackbox.BlackBoxPlugin
+api-version: '1.21.4'
+authors: [MrDino]
+description: Telemetry, inventory and diagnostics for Paper servers.
+load: STARTUP
+commands:
+  blackbox:
+    description: BlackBox status, reports and profiles
+    aliases: [bb]
+    usage: /blackbox help
+    permission: blackbox.admin
+permissions:
+  blackbox.admin:
+    description: Allows administering BlackBox and viewing its reports
+    default: op
