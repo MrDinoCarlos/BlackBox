@@ -1,108 +1,198 @@
 # BlackBox
 
-La referencia completa de funciones, señales, análisis, límites, configuración y procedimientos está en
-[`BLACKBOX-GUIA-COMPLETA.md`](BLACKBOX-GUIA-COMPLETA.md). La configuración incluida también está comentada por
-bloques y conserva las mismas claves compatibles con versiones anteriores.
+**Server observability, telemetry and diagnostics for Paper.**
 
-BlackBox es un plugin de telemetria y diagnostico compatible con **Paper 1.21.4–26.3**. Registra el estado del servidor sin hacer IO en el hilo principal, conserva historico por minutos, horas y dias, escanea los chunks cargados por lotes y genera informes Markdown con evidencias, hipotesis y acciones recomendadas.
+BlackBox records the context needed to investigate lag, crashes, overloaded chunks, plugin activity and storage problems without performing blocking I/O on the main server thread.
 
-El JAR conserva bytecode Java 21 para funcionar en Paper 1.21.4. Paper 26.3 requiere Java 25 o superior. Gradle usa las toolchains instaladas o provisionadas para compilar y comprobar ambas APIs:
+It is compatible with **Paper 1.21.4–26.3** and produces professional PDF reports, searchable Markdown reports and detailed CSV attachments.
 
-```powershell
-.\gradlew.bat clean build
+## Highlights
+
+- Live TPS, MSPT, tick percentiles, CPU, memory, heap, GC, threads and disk monitoring.
+- Persistent telemetry with retention, rotation, compression and storage quotas.
+- Batched loaded-chunk scanning distributed across server ticks.
+- Entity, block entity, hopper, spawner, item frame and command block analysis.
+- Chunk hotspots with coordinates, evidence and ready-to-use `/tp` commands.
+- Player latency, client protocol, locale, view distance and connection tracking.
+- Redstone, hopper, piston, explosion, inventory and block event monitoring.
+- Offline Anvil region census without loading chunks into Paper.
+- Plugin, dependency, command, world, datapack and resource pack inventory.
+- Configuration and asset inspection with sensitive values redacted.
+- Startup diagnostics, warning aggregation, watchdog detection and crash analysis.
+- Manual and automatic Java Flight Recorder profiling.
+- Cause-and-effect analysis with evidence, confidence and verification steps.
+- PDF, Markdown and normalized CSV reports.
+- English and Spanish localization through editable YAML files.
+
+## Commands
+
+| Command | Description |
+| --- | --- |
+| `/blackbox status` | Show the latest server, chunk, disk and profiling status. |
+| `/blackbox scan` | Queue an immediate scan of loaded chunks and offline regions. |
+| `/blackbox report 30m` | Generate a report for the selected time window. |
+| `/blackbox profile 60` | Capture a 60-second Java Flight Recorder profile. |
+| `/blackbox help` | Show the available commands. |
+
+All commands require the `blackbox.admin` permission, which is granted to operators by default.
+
+## Reports
+
+The `report` command generates a report directory under:
+
+```text
+plugins/BlackBox/reports/
+└── blackbox-<timestamp>-<period>/
+    ├── BlackBox-report.pdf
+    ├── report.md
+    ├── performance-episodes.csv
+    ├── incidents.csv
+    ├── startup-diagnostics.csv
+    ├── crash-analysis.csv
+    ├── plugin-analysis.csv
+    ├── profile-io.csv
+    ├── chunk-analysis.csv
+    ├── entity-summary.csv
+    ├── hotspots.csv
+    ├── warnings.csv
+    └── ...
 ```
 
-La tarea `check` compila el codigo una vez contra Paper 1.21.4 y otra contra Paper 26.3, ademas de ejecutar los tests.
+The PDF includes:
 
-El JAR queda en `build/libs/BlackBox-0.6.0.jar`. Copialo a `plugins/` y reinicia Paper. BlackBox carga en fase
-`STARTUP`, registra automaticamente durante toda la ejecucion y, en cada apagado o reinicio normal, crea
-`BlackBox-session-report.pdf` con la sesion completa. Los datos se escriben en `plugins/BlackBox/telemetry/`
-y los informes en `plugins/BlackBox/reports/`.
+- Executive overview and health index.
+- TPS, MSPT, CPU, heap, RAM, GC, disk and thread charts.
+- Historical comparison with the previous period.
+- Cause-and-effect performance episodes.
+- Incident timeline and severity markers.
+- Chunk density, entity lifecycle and geographic hotspots.
+- Player connectivity and command block analysis.
+- Plugin topology, dependencies and JFR evidence.
+- Datapack, resource pack and file inventory.
+- Offline Anvil census.
+- Coverage notes, limitations and a technical glossary.
 
-La telemetria se rota en segmentos de 5 minutos y los segmentos cerrados se comprimen con GZIP. El directorio
-`telemetry/` tiene una cuota dura de 256 MiB por defecto: al alcanzarla se eliminan primero los segmentos mas
-antiguos. Cada stream admite como maximo 1.000 filas por minuto para que una granja, command block o plugin con
-eventos masivos no pueda llenar el disco. Estos limites se configuran con `storage.max-telemetry-mib`,
-`storage.segment-minutes`, `storage.max-rows-per-stream-minute` y `storage.max-row-chars`.
-Los perfiles JFR tienen una cuota independiente de 256 MiB y los informes de 256 MiB; también conservan primero
-lo más reciente mediante `storage.max-profiles-mib` y `storage.max-reports-mib`.
+CSV files keep the full data when a PDF table is intentionally limited for readability.
 
-Durante el arranque, BlackBox conecta primero un monitor al log en vivo y despues sincroniza retroactivamente
-hasta 64 MiB de `logs/latest.log`, desde el comienzo de la sesion actual. Captura `WARN`, `ERROR`, `SEVERE` y
-`FATAL`, reconstruye stacks multilinea y clasifica el tipo probable (configuracion, codigo,
-dependencia/version, archivos/permisos, base de datos, red o recursos JVM), el origen, la causa y una posible
-solucion sin inundar la consola. El analisis aparece en los hallazgos del PDF y completo en
-`startup-diagnostics.csv`; el registro fuente se conserva en `plugins/BlackBox/startup-diagnostics.log`. Los valores invalidos,
-fuera de rango y las claves desconocidas de `config.yml` tambien indican la clave y, cuando puede localizarse,
-la linea exacta. Un YAML mal formado se diagnostica y no se sobrescribe.
+## Java Flight Recorder
 
-## Comandos
+Manual profiling is available through:
 
-- `/blackbox status`: TPS, MSPT, p95 de tick, CPU, heap, jugadores, chunks y ultimo escaneo.
-- `/blackbox scan`: inicia inmediatamente un escaneo por lotes de todos los chunks cargados.
-- `/blackbox report 30m|6h|2d`: genera un PDF profesional y sus anexos CSV en segundo plano.
-- `/blackbox profile 60`: genera un perfil JFR y un analisis inicial de plugins/metodos, GC, archivos y sockets.
+```text
+/blackbox profile <seconds>
+```
 
-Todos requieren `blackbox.admin`, concedido a operadores por defecto.
+Automatic profiling can start after consecutive samples cross the configured TPS or tick-p95 thresholds. BlackBox records:
 
-## Datos capturados
+- CPU execution samples.
+- Plugin frames found in sampled stacks.
+- Garbage collection events.
+- File and socket reads/writes.
+- Total and maximum I/O duration.
+- Top application methods.
 
-- TPS 1/5/15 min, MSPT medio, p50/p95/p99/max de los ticks recientes.
-- CPU del proceso/sistema, heap, GC, hilos, espacio de disco, jugadores y chunks cargados.
-- RAM fisica, swap, memoria no-heap/directa, descriptores abiertos, deadlocks y cola de telemetria.
-- Historial persistente de arranques/apagados y de plugins/versiones presentes en cada sesion.
-- Comparativa automatica con el periodo anterior de igual duracion y contexto de plugins anadidos, retirados o actualizados.
-- Cronologia de incidentes con severidad, momento y localizacion; los hotspots cambian de color segun su umbral.
-- Episodios causa-efecto: inicio, peor punto, recuperacion, duracion, MSPT antes/durante/despues, causa probable,
-  evidencias coincidentes, localizacion, nivel de confianza y una prueba concreta para validar la solucion.
-- Graficas temporales de CPU del proceso y sistema, heap, RAM fisica, hilos y disco libre, ademas de TPS y p95.
-- E/S de archivo y socket medida por cada perfil JFR, con bytes, tiempo total, operacion mas lenta y eventos de GC.
-- Para cada chunk localizado muestra el centro X/Z y un comando `/tp @s X ~ Z` copiable.
-- Analisis por plugin que combina tareas, listeners y presencia en stacks JFR sin presentar correlacion como causalidad.
-- Cargas de chunks, spawns, muertes, redstone, hoppers, pistones, explosiones y actividad de bloques.
-- Ping, protocolo, marca del cliente, locale, distancias de vista/simulacion, chunks enviados y eventos de conexion/resource pack.
-- Por chunk: entidades por tipo, items, living entities, item frames, jugadores, block entities por tipo, hoppers, spawners, command blocks y carga forzada.
-- Ciclo de carga por chunk: alta, descarga, guardado, nueva generacion, tiempo cargado observado, tickets de plugins y coste del propio escaneo.
-- Ciclo de vida por entidad: UUID, tipo, motivo de spawn, causa de retirada, origen, posicion, tiempo de vida, ticking, persistencia, pasajeros y jugadores que la reciben.
-- Hotspots por mundo/chunk para cargas, spawns, muertes, redstone, hoppers, pistones, explosiones, roturas y colocaciones.
-- Censo offline de todos los archivos Anvil `.mca`: enumera cada chunk de terreno, entidades y POI sin cargarlo; extrae entidades, block entities y ticks de bloque/fluidos serializados y valida las cabeceras.
-- Warnings, errores y stacks emitidos por plugins mediante el sistema de logging de Java.
-- Avisos de ticks atrasados (`Can't keep up`), watchdogs y crash reports del servidor con causa causal,
-  primer frame atribuible y pasos de verificacion. Los informes completos quedan intactos en `crash-reports/`.
-- Dependencias obligatorias ausentes/desactivadas y plugins que terminaron el arranque desactivados.
-- Plugins, versiones, dependencias, comandos, permisos, aliases, mundos, datapacks y resource pack configurado.
-- Tareas sincronas/asincronas pendientes y listeners registrados por plugin.
-- Archivos de configuracion y assets con tamano, fecha, SHA-256 y valores sanitizados. Contrasenas, tokens, credenciales, claves privadas y direcciones se sustituyen por `<redacted>`.
-- Contenido estadistico de ZIPs de resource/data packs: modelos, texturas, blockstates, funciones, tags, recetas y loot tables.
+The resulting `.jfr` file can be inspected with IntelliJ Profiler or JDK Mission Control.
 
-Las direcciones de jugadores se guardan con hash salado por defecto. Puede elegirse `hash`, `plain` u `off` en `config.yml`.
+## Telemetry and storage
 
-## Limites reales
+Telemetry is written to:
 
-Paper no recibe el FPS, GPU, mods, shaders ni memoria del cliente. Eso requeriria un mod cliente complementario. Las particulas son paquetes transitorios y no existe un inventario global retrospectivo. La API publica tampoco ofrece CPU exacta por entidad/chunk ni identifica que plugin origino cada llamada; BlackBox conserva evidencias, calcula correlaciones y usa JFR bajo demanda para atribuir trabajo mediante stacks reales. Un chunk descargado no ejecuta ticks; el censo offline describe lo que conserva en disco, no inventa actividad mientras estuvo inactivo.
+```text
+plugins/BlackBox/telemetry/
+plugins/BlackBox/profiles/
+plugins/BlackBox/reports/
+```
 
-El muestreo normal esta disenado para ser acotado: los chunks se reparten entre ticks, la escritura usa una cola asincrona y los informes/hashes se generan fuera del hilo principal. Los intervalos, lotes, umbrales y retencion se configuran en `plugins/BlackBox/config.yml`.
+Default protections include:
 
-El idioma predeterminado es `en_US`. Para usar español, cambia `language` a `es_ES` en `config.yml`. Los textos editables están en `lang/en_US.yml` y `lang/es_ES.yml`; ambos usan claves YAML estables para que MrDinoBot pueda traducir sus valores. El idioma seleccionado se aplica a comandos, logs generados, PDF, Markdown y análisis JFR.
+- Five-minute telemetry segments.
+- GZIP compression for closed segments.
+- A 256 MiB telemetry quota.
+- Independent 256 MiB quotas for profiles and reports.
+- Per-stream row limits.
+- Maximum row length limits.
+- Asynchronous queues between Paper and disk storage.
 
-Cuando `profiling.automatic.enabled` esta activo, varias muestras consecutivas por debajo del TPS configurado o por
-encima del p95 de tick inician un JFR corto. `profiling.automatic.cooldown-minutes` evita capturas repetidas durante
-el mismo incidente. El PDF incorpora indice, marcadores navegables, recursos JVM/sistema, comparativa historica,
-un glosario de una pagina y una referencia de siglas en cada pie. Los anexos nuevos son
-`performance-episodes.csv`, `profile-io.csv` y `crash-analysis.csv`, ademas de `incidents.csv`,
-`session-history.csv`, `plugin-analysis.csv` y `profiles.csv`.
+These values are configurable in `config.yml`.
 
-El analizador de episodios compara ventanas inmediatamente anteriores, durante el problema y posteriores. Combina
-CPU, RAM, heap, GC, jugadores, chunks, entidades, eventos y hotspots geograficos, warnings y stacks de perfiles JFR.
-Una confianza alta requiere evidencia directa de log o JFR; una confianza media combina varias senales; una baja
-se presenta como hipotesis reproducible. De este modo el informe no convierte una coincidencia estadistica en una
-acusacion falsa contra un plugin.
+## Localization
 
-Los CSV del reporte usan tablas normalizadas y columnas independientes. Las relaciones de uno a muchos se
-exportan en archivos propios: aliases de comandos, autores y dependencias de plugins, entradas de configuracion,
-features de datapacks, plugins/datapacks por sesion y tipos o tickets por chunk. Los anexos geograficos incluyen
-el centro del chunk y un comando `/tp` listo para usar.
+The default locale is `en_US`. Spanish is available as `es_ES`.
 
-BlackBox analiza los crash reports del servidor que esten en `crash-reports/`. Para analizar un crash de cliente,
-copia el `.txt` entregado por el jugador a `plugins/BlackBox/client-crash-reports/` y genera otro informe. El
-protocolo de Minecraft no envia automaticamente el informe, FPS, GPU, mods ni memoria del cliente al servidor.
+Set the locale in `config.yml`:
+
+```yaml
+language: en_US
+```
+
+Translation files are stored in `src/main/resources/lang/`:
+
+```text
+lang/
+├── en_US.yml
+└── es_ES.yml
+```
+
+The selected locale applies to command messages, generated logs, PDF reports, Markdown reports and JFR analysis. The YAML keys should remain unchanged so MrDinoBot can update translated values safely.
+
+## Privacy
+
+Player data can be configured in `config.yml`:
+
+- Player addresses: `hash`, `plain` or `off`.
+- Player names.
+- Player UUIDs.
+- Player locations.
+- Entity UUIDs.
+
+Sensitive configuration values such as passwords, tokens, credentials, private keys and database URLs are replaced with `<redacted>`.
+
+## Compatibility
+
+| Component | Support |
+| --- | --- |
+| Paper | 1.21.4–26.3 |
+| Runtime bytecode | Java 21 |
+| Paper 26.3 compilation | Java 25 or newer |
+| Report engine | Apache PDFBox 3.0.8 |
+
+Paper 26.3 requires Java 25 or newer. The normal plugin JAR keeps Java 21 bytecode for Paper 1.21.4 compatibility.
+
+## Important limits
+
+BlackBox cannot receive client FPS, GPU usage, shaders, mods or client memory through the normal Minecraft protocol.
+
+Paper does not expose exact CPU usage per entity or chunk, and public APIs cannot always identify the plugin responsible for every call. BlackBox therefore combines telemetry, correlations, logs, chunk evidence and JFR stack samples. Correlation is presented as evidence or a hypothesis, not as automatic proof of causality.
+
+The offline region census describes data stored on disk. It does not measure activity while a chunk was unloaded.
+
+## Build
+
+Requirements:
+
+- JDK 21 for the main build.
+- JDK 25 or newer for Paper 26.3 compatibility compilation.
+
+Run the full verification suite:
+
+```powershell
+.\gradlew.bat clean check
+```
+
+Build the plugin JAR:
+
+```powershell
+.\gradlew.bat build
+```
+
+The JAR is created at:
+
+```text
+build/libs/BlackBox-0.6.0.jar
+```
+
+Copy it to the server's `plugins/` directory and restart Paper.
+
+## License
+
+BlackBox is released under the [MIT License](LICENSE).
